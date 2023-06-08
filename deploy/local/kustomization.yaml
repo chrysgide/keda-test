@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+  - namespace.yaml
+  - https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml # we are using this to test keda
+
+patches:
+  # - target:
+  #     kind: Deployment
+  #   patch: |-
+  #     - op: remove
+  #       path: /spec/template/spec/nodeSelector
+  - target:
+      version: v1
+      kind: Deployment
+      name: metrics-server
+      namespace: kube-system
+    patch: |- # required for kind
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --kubelet-insecure-tls

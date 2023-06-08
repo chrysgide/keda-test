@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - https://github.com/Cision-DevOps/keda/deploy/base?ref=v1
+
+# * for europe
+# local images
+image:
+  keda:
+    repository: europe-west3-docker.pkg.dev/cision-container-registry/container-artifact-registry/keda
+  metricsApiServer:
+    repository: europe-west3-docker.pkg.dev/cision-container-registry/container-artifact-registry/keda-metrics-apiserver

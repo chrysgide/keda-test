@@ -1,0 +1,81 @@
+---
+version: 3
+
+tasks:
+  isKind:
+    cmds: ["[[ $(kubectl config current-context) == kind-kind ]]"]
+  kind:
+    desc: setup a kind cluster for testing, using version 1.23
+    cmds:
+      - kind create cluster --image "kindest/node:v1.23.13"
+  prometheus:
+    desc: install prometheus for testing
+    deps: [isKind]
+    cmds:
+      - helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+      - >-
+        helm upgrade --install prometheus prometheus-community/prometheus
+        -n prometheus --create-namespace
+      - >-
+        helm upgrade --install prometheus-crds prometheus-community/prometheus-operator-crds
+        -n prometheus
+  nginx:
+    desc: install nginx, for testing keda
+    deps: [isKind]
+    cmds:
+      - helm upgrade --install nginx oci://registry-1.docker.io/bitnamicharts/nginx
+        -n nginx --create-namespace --set service.ports.http=8081 --set metrics.enabled=true --set metrics.service.port=9113 --set replicaCount=3 --set resources.requests.cpu=100m --set metrics.resources.requests.cpu=10m
+  keda:
+    desc: install keda
+    deps: [isKind]
+    cmds:
+      - |
+        kubectl kustomize --enable-helm deploy/local |
+        kubectl apply --server-side -f -
+      - kubectl rollout status -n keda deployment keda-operator
+  test:
+    desc: test keda autoscaling; this should scale down to 1 pod # this might take too long to test with!
+    deps: [isKind]
+    cmds:
+      - |
+        kubectl apply -f - <<EOF
+        apiVersion: keda.sh/v1alpha1
+        kind: ScaledObject
+        metadata:
+          name: cpu-scaledobject
+          namespace: nginx
+        spec:
+          scaleTargetRef:
+            name: nginx
+          triggers:
+          - type: cpu
+            metricType: Utilization # Allowed types are 'Utilization' or 'AverageValue'
+            metadata:
+              value: "80"
+        EOF
+      - |
+        while true; do
+          RC=$(kubectl -n nginx get deployment nginx -o=jsonpath='{.status.replicas}')
+
+          if [ $RC -eq 1 ]; then
+            echo "Replicas shrunk by keda."
+            exit 0
+          fi
+
+          sleep 3
+        done
+  clean:
+    desc: remove kind cluster
+    cmds:
+      - kind delete cluster
+  full-test:
+    desc: full test, create cluster, install, test, delete cluster
+    cmds:
+      - task: kind
+      - task: prometheus
+      - task: nginx
+      - task: keda
+      - task: test
+      - task: clean
+# Just adding a comment !!!!!!
+
